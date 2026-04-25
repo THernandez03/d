@@ -17,37 +17,51 @@ pub fn bin_dir() -> PathBuf {
     prefix().join("bin")
 }
 
-/// Activate a cached version by creating/updating a symlink.
+fn remove_bin_symlink(bin: &std::path::Path) {
+    if bin.symlink_metadata().is_ok() {
+        #[cfg(unix)]
+        {
+            fs::remove_file(bin).ok();
+        }
+        #[cfg(windows)]
+        {
+            fs::remove_dir(bin).ok();
+        }
+    }
+}
+
+/// Activate a cached version by pointing `~/.d/bin` at the cached version
+/// directory as a single directory symlink.
 pub fn activate(tag: &str) -> Result<()> {
     let bin = bin_dir();
-    fs::create_dir_all(&bin).context("Failed to create bin directory")?;
 
-    let deno_src = crate::cache::deno_binary(tag);
+    let cached_dir = crate::cache::version_dir(tag);
+    anyhow::ensure!(
+        cached_dir.is_dir(),
+        "Cached version directory not found: {}",
+        cached_dir.display()
+    );
 
-    #[cfg(target_os = "windows")]
-    let link_path = bin.join("deno.exe");
-    #[cfg(not(target_os = "windows"))]
-    let link_path = bin.join("deno");
-
-    if link_path.exists() || link_path.symlink_metadata().is_ok() {
-        fs::remove_file(&link_path).ok();
+    if let Some(parent) = bin.parent() {
+        fs::create_dir_all(parent).context("Failed to create prefix directory")?;
     }
 
+    remove_bin_symlink(&bin);
+
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&deno_src, &link_path).with_context(|| {
+    std::os::unix::fs::symlink(&cached_dir, &bin).with_context(|| {
         format!(
             "Failed to create symlink {} -> {}",
-            link_path.display(),
-            deno_src.display()
+            bin.display(),
+            cached_dir.display()
         )
     })?;
-
     #[cfg(windows)]
-    std::os::windows::fs::symlink_file(&deno_src, &link_path).with_context(|| {
+    std::os::windows::fs::symlink_dir(&cached_dir, &bin).with_context(|| {
         format!(
             "Failed to create symlink {} -> {}",
-            link_path.display(),
-            deno_src.display()
+            bin.display(),
+            cached_dir.display()
         )
     })?;
 
@@ -65,17 +79,12 @@ pub fn active_version() -> Option<String> {
         .map(|s| s.trim().to_string())
 }
 
-/// Remove the active deno symlink (does not remove cache).
+/// Remove the active `~/.d/bin` directory symlink (does not remove cache).
 pub fn uninstall() -> Result<()> {
     let bin = bin_dir();
 
-    #[cfg(target_os = "windows")]
-    let link_path = bin.join("deno.exe");
-    #[cfg(not(target_os = "windows"))]
-    let link_path = bin.join("deno");
-
-    if link_path.exists() || link_path.symlink_metadata().is_ok() {
-        fs::remove_file(&link_path).context("Failed to remove deno symlink")?;
+    if bin.symlink_metadata().is_ok() {
+        remove_bin_symlink(&bin);
         println!("Removed active Deno installation.");
     } else {
         println!("No active Deno installation found.");
