@@ -2,7 +2,7 @@
 /// Deno release filenames use the pattern: `deno-{target}.zip`
 /// e.g. `deno-x86_64-unknown-linux-gnu.zip`
 #[must_use]
-pub fn target() -> &'static str {
+pub const fn target() -> &'static str {
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     return "x86_64-unknown-linux-gnu";
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
@@ -76,7 +76,12 @@ mod tests {
     #[test]
     fn download_url_ends_with_zip() {
         let url = download_url("v1.40.0");
-        assert!(url.ends_with(".zip"), "url: {url}");
+        assert!(
+            std::path::Path::new(&url)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")),
+            "url: {url}"
+        );
     }
 
     #[test]

@@ -131,7 +131,7 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write as _;
+    use std::io::Write;
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -152,7 +152,7 @@ mod tests {
         let buf = Vec::new();
         let cursor = std::io::Cursor::new(buf);
         let mut zip = zip::ZipWriter::new(cursor);
-        let options =
+        let options: zip::write::FileOptions<'_, zip::write::ExtendedFileOptions> =
             zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
         zip.start_file(filename, options).unwrap();
         zip.write_all(content).unwrap();
