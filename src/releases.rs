@@ -10,6 +10,22 @@ pub struct GhRelease {
     pub prerelease: bool,
 }
 
+/// Fetch the current canary commit SHA from `dl.deno.land/canary-latest.txt`
+/// and return a stable cache key like `"canary-{sha}"`.
+fn resolve_canary_tag() -> Result<String> {
+    let client = Client::new();
+    let sha = client
+        .get("https://dl.deno.land/canary-latest.txt")
+        .header("User-Agent", "d-deno-version-manager")
+        .send()
+        .context("Failed to fetch Deno canary SHA")?
+        .text()
+        .context("Failed to read Deno canary SHA response")?;
+    let sha = sha.trim();
+    anyhow::ensure!(!sha.is_empty(), "Deno canary SHA was empty");
+    Ok(format!("canary-{sha}"))
+}
+
 /// Fetch the recent release list from GitHub.
 pub fn fetch_releases(per_page: u32) -> Result<Vec<GhRelease>> {
     let client = Client::new();
@@ -45,9 +61,9 @@ pub fn list_remote() -> Result<()> {
 pub fn resolve_tag(version_str: &str) -> Result<String> {
     let v = version_str.trim();
 
-    // canary short-circuits — no network needed
+    // canary short-circuits — fetches the current SHA from dl.deno.land
     if v == "canary" || v == "next" {
-        return Ok("canary".to_string());
+        return resolve_canary_tag();
     }
 
     // Strip leading `v` so bare semver and `v`-prefixed both work
@@ -69,6 +85,8 @@ pub fn resolve_from(version_str: &str, releases: &[GhRelease]) -> Result<String>
 
     // Canary — project-native nightly
     if v == "canary" || v == "next" {
+        // resolve_from is only called for non-canary aliases from resolve_tag;
+        // canary is handled before reaching here. Keep for completeness.
         return Ok("canary".to_string());
     }
 
@@ -91,8 +109,7 @@ pub fn resolve_from(version_str: &str, releases: &[GhRelease]) -> Result<String>
     releases
         .iter()
         .find(|r| {
-            !r.prerelease
-                && (r.tag_name.starts_with(&needle) || r.tag_name == format!("v{prefix}"))
+            !r.prerelease && (r.tag_name.starts_with(&needle) || r.tag_name == format!("v{prefix}"))
         })
         .map(|r| r.tag_name.clone())
         .ok_or_else(|| anyhow::anyhow!("No stable Deno release found matching '{version_str}'"))
@@ -121,7 +138,13 @@ mod tests {
 
     #[test]
     fn resolve_canary_without_network() {
-        assert_eq!(resolve_from("canary", &stable_releases()).unwrap(), "canary");
+        // canary resolution now hits the network; resolve_from still returns
+        // the bare "canary" string when called directly (used by aliases in
+        // non-canary paths). The actual canary-{sha} form comes from resolve_tag.
+        assert_eq!(
+            resolve_from("canary", &stable_releases()).unwrap(),
+            "canary"
+        );
     }
 
     #[test]
@@ -131,12 +154,18 @@ mod tests {
 
     #[test]
     fn resolve_latest_returns_first_stable() {
-        assert_eq!(resolve_from("latest", &stable_releases()).unwrap(), "v2.0.0");
+        assert_eq!(
+            resolve_from("latest", &stable_releases()).unwrap(),
+            "v2.0.0"
+        );
     }
 
     #[test]
     fn resolve_stable_returns_first_stable() {
-        assert_eq!(resolve_from("stable", &stable_releases()).unwrap(), "v2.0.0");
+        assert_eq!(
+            resolve_from("stable", &stable_releases()).unwrap(),
+            "v2.0.0"
+        );
     }
 
     #[test]
@@ -156,12 +185,18 @@ mod tests {
 
     #[test]
     fn resolve_prefix_with_x_notation() {
-        assert_eq!(resolve_from("1.46.x", &stable_releases()).unwrap(), "v1.46.3");
+        assert_eq!(
+            resolve_from("1.46.x", &stable_releases()).unwrap(),
+            "v1.46.3"
+        );
     }
 
     #[test]
     fn resolve_exact_version() {
-        assert_eq!(resolve_from("v1.40.0", &stable_releases()).unwrap(), "v1.40.0");
+        assert_eq!(
+            resolve_from("v1.40.0", &stable_releases()).unwrap(),
+            "v1.40.0"
+        );
     }
 
     #[test]

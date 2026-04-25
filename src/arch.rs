@@ -16,9 +16,18 @@ pub const fn target() -> &'static str {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     return "aarch64-pc-windows-msvc";
     #[cfg(not(any(
-        all(target_os = "linux",   any(target_arch = "x86_64", target_arch = "aarch64")),
-        all(target_os = "macos",   any(target_arch = "x86_64", target_arch = "aarch64")),
-        all(target_os = "windows", any(target_arch = "x86_64", target_arch = "aarch64")),
+        all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+        all(
+            target_os = "macos",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+        all(
+            target_os = "windows",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
     )))]
     return "x86_64-unknown-linux-gnu"; // fallback
 }
@@ -31,7 +40,13 @@ pub const fn target() -> &'static str {
 pub fn download_url(tag: &str) -> String {
     let tgt = target();
     let base = "https://github.com/denoland/deno/releases";
-    format!("{base}/download/{tag}/deno-{tgt}.zip")
+    // Cache keys for canary are "canary-{sha}"; the download release tag is always "canary".
+    let release_tag = if tag == "canary" || tag.starts_with("canary-") {
+        "canary"
+    } else {
+        tag
+    };
+    format!("{base}/download/{release_tag}/deno-{tgt}.zip")
 }
 
 #[cfg(test)]
