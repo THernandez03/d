@@ -1,0 +1,32 @@
+[package]
+name = "d"
+version = "0.1.0"
+edition = "2021"
+description = "Interactively manage your Deno versions"
+license = "MIT"
+repository = "https://github.com/THernandez03/d"
+keywords = ["deno", "version-manager", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "d"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+console = "0.15"
+dialoguer = "0.11"
+dirs-next = "2"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
