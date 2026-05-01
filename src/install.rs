@@ -37,11 +37,11 @@ pub fn install(version_str: &str) -> Result<()> {
         download_version(&url, &tag)?;
     }
 
-    println!(
-        "{} Activating Deno {}...",
-        style("◆").magenta(),
-        style(&tag).cyan().bold(),
-    );
+    let from = symlink::active_version();
+    match &from {
+        Some(f) => println!("{} Activating Deno {} \u{2192} {}...", style("◆").magenta(), style(f).cyan().bold(), style(&tag).cyan().bold()),
+        None => println!("{} Activating Deno {}...", style("◆").magenta(), style(&tag).cyan().bold()),
+    }
     symlink::activate(&tag)?;
     println!(
         "{} Installed Deno {} successfully.",
