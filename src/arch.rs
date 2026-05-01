@@ -34,19 +34,18 @@ pub const fn target() -> &'static str {
 
 /// Build the download URL for a specific Deno release tag.
 ///
-/// Deno uses GitHub releases. Canary lives at the `canary` tag under
-/// `denoland/deno` with the asset named `deno-{target}.zip`.
+/// Uses dl.deno.land:
+/// - Release: `https://dl.deno.land/release/{tag}/deno-{target}.zip`
+/// - Canary:  `https://dl.deno.land/canary/{sha}/deno-{target}.zip`
+///
+/// Cache keys for canary are `"canary-{sha}"`; the SHA is extracted for the URL.
 #[must_use]
 pub fn download_url(tag: &str) -> String {
     let tgt = target();
-    let base = "https://github.com/denoland/deno/releases";
-    // Cache keys for canary are "canary-{sha}"; the download release tag is always "canary".
-    let release_tag = if tag == "canary" || tag.starts_with("canary-") {
-        "canary"
-    } else {
-        tag
-    };
-    format!("{base}/download/{release_tag}/deno-{tgt}.zip")
+    tag.strip_prefix("canary-").map_or_else(
+        || format!("https://dl.deno.land/release/{tag}/deno-{tgt}.zip"),
+        |sha| format!("https://dl.deno.land/canary/{sha}/deno-{tgt}.zip"),
+    )
 }
 
 #[cfg(test)]
@@ -83,9 +82,9 @@ mod tests {
     }
 
     #[test]
-    fn download_url_starts_with_github() {
+    fn download_url_starts_with_dl_deno_land() {
         let url = download_url("v1.40.0");
-        assert!(url.starts_with("https://github.com/denoland/deno/releases"));
+        assert!(url.starts_with("https://dl.deno.land/release/"), "url: {url}");
     }
 
     #[test]
@@ -106,8 +105,13 @@ mod tests {
     }
 
     #[test]
-    fn download_url_canary() {
-        let url = download_url("canary");
-        assert!(url.contains("/download/canary/deno-"));
+    fn download_url_canary_with_sha() {
+        let sha = "abc123def456";
+        let url = download_url(&format!("canary-{sha}"));
+        assert!(url.starts_with("https://dl.deno.land/canary/"), "url: {url}");
+        assert!(url.contains(sha), "url: {url}");
+        assert!(std::path::Path::new(&url)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")), "url: {url}");
     }
 }

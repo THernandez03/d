@@ -62,7 +62,7 @@ pub fn resolve_tag(version_str: &str) -> Result<String> {
     let v = version_str.trim();
 
     // canary short-circuits — fetches the current SHA from dl.deno.land
-    if v == "canary" || v == "next" {
+    if v == "canary" || v == "next" || v == "latest" || v == "nightly" || v == "edge" {
         return resolve_canary_tag();
     }
 
@@ -84,7 +84,7 @@ pub fn resolve_from(version_str: &str, releases: &[GhRelease]) -> Result<String>
     let v = version_str.trim();
 
     // Canary — project-native nightly
-    if v == "canary" || v == "next" {
+    if v == "canary" || v == "next" || v == "latest" || v == "nightly" || v == "edge" {
         // resolve_from is only called for non-canary aliases from resolve_tag;
         // canary is handled before reaching here. Keep for completeness.
         return Ok("canary".to_string());
@@ -93,7 +93,7 @@ pub fn resolve_from(version_str: &str, releases: &[GhRelease]) -> Result<String>
     let bare = v.strip_prefix('v').unwrap_or(v);
 
     // Latest stable / lts aliases
-    if bare.is_empty() || bare == "latest" || bare == "stable" || bare == "lts" {
+    if bare.is_empty() || bare == "stable" || bare == "lts" {
         return releases
             .iter()
             .find(|r| !r.prerelease)
@@ -153,10 +153,26 @@ mod tests {
     }
 
     #[test]
-    fn resolve_latest_returns_first_stable() {
+    fn resolve_latest_returns_canary() {
         assert_eq!(
             resolve_from("latest", &stable_releases()).unwrap(),
-            "v2.0.0"
+            "canary"
+        );
+    }
+
+    #[test]
+    fn resolve_nightly_returns_canary() {
+        assert_eq!(
+            resolve_from("nightly", &stable_releases()).unwrap(),
+            "canary"
+        );
+    }
+
+    #[test]
+    fn resolve_edge_returns_canary() {
+        assert_eq!(
+            resolve_from("edge", &stable_releases()).unwrap(),
+            "canary"
         );
     }
 
@@ -212,6 +228,8 @@ mod tests {
 
     #[test]
     fn resolve_errors_on_empty_list() {
-        assert!(resolve_from("latest", &[]).is_err());
+        // "latest" now resolves to canary without needing the list;
+        // use a stable alias that does require releases.
+        assert!(resolve_from("stable", &[]).is_err());
     }
 }
