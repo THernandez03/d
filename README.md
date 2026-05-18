@@ -114,6 +114,15 @@ d uninstall
 | `1.46`   | Latest patch in 1.46.x          |
 | `1`      | Latest release in major 1       |
 
+## Related Projects
+
+| Project | Runtime |
+|---------|---------|
+| [n](https://github.com/THernandez03/n) | Node.js version manager |
+| [b](https://github.com/THernandez03/b) | Bun version manager |
+| [z](https://github.com/THernandez03/z) | Zig version manager |
+| [r](https://github.com/THernandez03/r) | Rust version manager |
+
 ## License
 
 MIT
