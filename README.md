@@ -23,6 +23,18 @@
 
 ## Installation
 
+### Pre-built binary (no Rust required)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/THernandez03/d/main/install.sh | sh
+```
+
+This installs `d` to `~/.local/bin/d`. You can override the destination:
+
+```bash
+INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/THernandez03/d/main/install.sh | sh
+```
+
 ### From source (requires Rust)
 
 ```bash
@@ -40,7 +52,8 @@ Add `~/.d/bin` to your `PATH`:
 ```bash
 # bash / zsh
 export D_PREFIX="$HOME/.d"
-export PATH="$D_PREFIX/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"  # for the d binary
+export PATH="$D_PREFIX/bin:$PATH"     # for managed Deno binaries
 ```
 
 Optional environment variables:
