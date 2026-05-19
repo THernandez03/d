@@ -170,10 +170,7 @@ mod tests {
 
     #[test]
     fn resolve_edge_returns_canary() {
-        assert_eq!(
-            resolve_from("edge", &stable_releases()).unwrap(),
-            "canary"
-        );
+        assert_eq!(resolve_from("edge", &stable_releases()).unwrap(), "canary");
     }
 
     #[test]

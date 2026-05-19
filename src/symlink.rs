@@ -172,5 +172,4 @@ mod tests {
             std::env::remove_var("D_CACHE_DIR");
         });
     }
-
 }

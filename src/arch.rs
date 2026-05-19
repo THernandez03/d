@@ -84,7 +84,10 @@ mod tests {
     #[test]
     fn download_url_starts_with_dl_deno_land() {
         let url = download_url("v1.40.0");
-        assert!(url.starts_with("https://dl.deno.land/release/"), "url: {url}");
+        assert!(
+            url.starts_with("https://dl.deno.land/release/"),
+            "url: {url}"
+        );
     }
 
     #[test]
@@ -108,10 +111,16 @@ mod tests {
     fn download_url_canary_with_sha() {
         let sha = "abc123def456";
         let url = download_url(&format!("canary-{sha}"));
-        assert!(url.starts_with("https://dl.deno.land/canary/"), "url: {url}");
+        assert!(
+            url.starts_with("https://dl.deno.land/canary/"),
+            "url: {url}"
+        );
         assert!(url.contains(sha), "url: {url}");
-        assert!(std::path::Path::new(&url)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")), "url: {url}");
+        assert!(
+            std::path::Path::new(&url)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("zip")),
+            "url: {url}"
+        );
     }
 }
