@@ -54,6 +54,13 @@ export PATH="$HOME/.local/bin:$PATH"  # for the d binary
 export PATH="$D_PREFIX/bin:$PATH"     # for managed Deno binaries
 ```
 
+> [!IMPORTANT]
+> Some zsh frameworks (e.g. oh-my-zsh) define `d` as an alias for `dirs -v` (directory stack). Add `unset -f d` **after** your PATH exports so the `d` binary takes precedence:
+>
+> ```zsh
+> unset -f d
+> ```
+
 Optional environment variables:
 
 | Variable      | Default         | Description                          |
