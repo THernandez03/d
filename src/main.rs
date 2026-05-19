@@ -9,12 +9,48 @@ mod releases;
 mod symlink;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{
+    builder::styling::{AnsiColor, Effects, Styles},
+    Parser, Subcommand,
+};
+
+const fn cli_styles() -> Styles {
+    Styles::styled()
+        .header(AnsiColor::Green.on_default().effects(Effects::BOLD))
+        .usage(AnsiColor::Green.on_default().effects(Effects::BOLD))
+        .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+        .placeholder(AnsiColor::Cyan.on_default())
+}
+
+const AFTER_HELP: &str = "\x1b[1;32mInstall a version:\x1b[0m
+  \x1b[36md <version>\x1b[0m    Install and activate (e.g. \x1b[36m2.0.0\x1b[0m, \x1b[36mlatest\x1b[0m, \x1b[36mcanary\x1b[0m)
+
+\x1b[1;32mVersion aliases:\x1b[0m
+  \x1b[36mlatest\x1b[0m, \x1b[36mstable\x1b[0m  Latest stable release
+  \x1b[36mlts\x1b[0m             Same as latest
+  \x1b[36mcanary\x1b[0m, \x1b[36mnext\x1b[0m    Deno's nightly canary build
+  \x1b[36m1.46\x1b[0m            Latest patch in 1.46.x
+  \x1b[36m1\x1b[0m               Latest release in major 1";
 
 /// d — Interactively manage your Deno versions
 #[derive(Parser)]
-#[command(name = "d", version, about, long_about = None)]
+#[command(
+    name = "d",
+    version,
+    about,
+    styles = cli_styles(),
+    disable_help_subcommand = true,
+    disable_help_flag = true,
+    disable_version_flag = true,
+    after_help = AFTER_HELP,
+)]
 struct Cli {
+    /// Print help
+    #[arg(short = 'h', long = "help", visible_short_alias = 'H', action = clap::ArgAction::Help)]
+    help: Option<bool>,
+    /// Print version
+    #[arg(short = 'V', long = "version", visible_short_alias = 'v', action = clap::ArgAction::Version)]
+    version: Option<bool>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -87,21 +123,31 @@ fn main() -> Result<()> {
 
 mod diagnostics {
     use crate::{cache, symlink};
+    use console::style;
 
     pub fn info() {
-        println!("d — Deno version manager diagnostics");
-        println!();
-
         let prefix = symlink::prefix();
-        println!("  install prefix : {}", prefix.display());
+        println!("  {} {}", style("install prefix :").dim(), prefix.display());
 
         let cache_dir = cache::cache_dir();
-        println!("  cache dir      : {}", cache_dir.display());
+        println!(
+            "  {} {}",
+            style("cache dir      :").dim(),
+            cache_dir.display()
+        );
 
         let active = symlink::active_version();
         match active {
-            Some(v) => println!("  active version : {v}"),
-            None => println!("  active version : (none)"),
+            Some(v) => println!(
+                "  {} {}",
+                style("active version :").dim(),
+                style(v).cyan().bold()
+            ),
+            None => println!(
+                "  {} {}",
+                style("active version :").dim(),
+                style("(none)").dim()
+            ),
         }
     }
 }
