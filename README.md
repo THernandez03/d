@@ -116,6 +116,12 @@ d uninstall
 | `1.46`   | Latest patch in 1.46.x      |
 | `1`      | Latest release in major 1   |
 
+## How It Works
+
+`d` downloads prebuilt Deno binaries from the [denoland/deno GitHub Releases](https://github.com/denoland/deno/releases), caches them under `~/.d/versions/<tag>/`, and creates a symlink at `~/.d/bin/deno` pointing to the selected version.
+
+No subshells. No profile setup. Just a symlink.
+
 ## Related Projects
 
 | Project                                | Runtime                 |
