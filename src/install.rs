@@ -39,8 +39,17 @@ pub fn install(version_str: &str) -> Result<()> {
 
     let from = symlink::active_version();
     match &from {
-        Some(f) => println!("{} Activating Deno {} \u{2192} {}...", style("◆").magenta(), style(f).cyan().bold(), style(&tag).cyan().bold()),
-        None => println!("{} Activating Deno {}...", style("◆").magenta(), style(&tag).cyan().bold()),
+        Some(f) => println!(
+            "{} Activating Deno {} \u{2192} {}...",
+            style("◆").magenta(),
+            style(f).cyan().bold(),
+            style(&tag).cyan().bold()
+        ),
+        None => println!(
+            "{} Activating Deno {}...",
+            style("◆").magenta(),
+            style(&tag).cyan().bold()
+        ),
     }
     symlink::activate(&tag)?;
     println!(
@@ -214,7 +223,7 @@ pub fn update_self() -> Result<()> {
     println!("{} Checking for {} updates...", style("◆").cyan(), name);
     let client = reqwest::blocking::Client::new();
     let release: serde_json::Value = client
-        .get(&format!(
+        .get(format!(
             "https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
         ))
         .header("User-Agent", format!("{name}-version-manager"))
@@ -244,9 +253,7 @@ pub fn update_self() -> Result<()> {
         style(remote).cyan().bold()
     );
     let artifact = self_artifact();
-    let url = format!(
-        "https://github.com/{GITHUB_REPO}/releases/download/{tag}/{artifact}"
-    );
+    let url = format!("https://github.com/{GITHUB_REPO}/releases/download/{tag}/{artifact}");
     let exe = std::env::current_exe().context("Failed to locate current executable")?;
     let tmp = exe.with_extension("update-tmp");
     {
@@ -266,7 +273,9 @@ pub fn update_self() -> Result<()> {
             if n == 0 {
                 break;
             }
-            writer.write_all(&buf[..n]).context("Write error during download")?;
+            writer
+                .write_all(&buf[..n])
+                .context("Write error during download")?;
         }
     }
     #[cfg(unix)]
@@ -306,8 +315,7 @@ pub fn uninstall_self() -> Result<()> {
         println!("  {} Removed {}", style("✓").green(), prefix.display());
     }
     let exe = std::env::current_exe().context("Failed to locate current executable")?;
-    fs::remove_file(&exe)
-        .with_context(|| format!("Failed to remove {}", exe.display()))?;
+    fs::remove_file(&exe).with_context(|| format!("Failed to remove {}", exe.display()))?;
     println!("  {} Removed {}", style("✓").green(), exe.display());
     println!();
     println!(
@@ -374,7 +382,10 @@ mod tests {
             fs::write(vdir.join("deno"), b"fake").unwrap();
             // This resolves the exact 3-part tag without network
             let result = download_only("1.40.0");
-            assert!(result.is_ok(), "should skip download when cached: {result:?}");
+            assert!(
+                result.is_ok(),
+                "should skip download when cached: {result:?}"
+            );
         });
     }
 }

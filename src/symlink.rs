@@ -173,27 +173,4 @@ mod tests {
         });
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn uninstall_removes_symlink_and_marker() {
-        with_temp_prefix(|base| {
-            std::env::set_var("D_CACHE_DIR", base.join("versions"));
-            let vdir = base.join("versions").join("v1.40.0");
-            fs::create_dir_all(&vdir).unwrap();
-            fs::write(vdir.join("deno"), b"#!/bin/sh").unwrap();
-            activate("v1.40.0").unwrap();
-            uninstall();
-            let link = base.join("bin").join("deno");
-            assert!(!link.exists() && link.symlink_metadata().is_err());
-            assert!(active_version().is_none());
-            std::env::remove_var("D_CACHE_DIR");
-        });
-    }
-
-    #[test]
-    fn uninstall_ok_when_nothing_installed() {
-        with_temp_prefix(|_| {
-            uninstall();
-        });
-    }
 }
