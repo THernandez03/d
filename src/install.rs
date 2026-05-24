@@ -413,6 +413,11 @@ fn self_artifact() -> String {
     }
 }
 
+fn strip_version_tag<'a>(tag: &'a str, name: &str) -> &'a str {
+    tag.trim_start_matches(&format!("{name}-v"))
+        .trim_start_matches('v')
+}
+
 /// Self-update this version manager binary to the latest GitHub release.
 pub fn update_self() -> Result<()> {
     let name = env!("CARGO_PKG_NAME");
@@ -431,9 +436,7 @@ pub fn update_self() -> Result<()> {
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("No tag_name in GitHub release response"))?;
     let current = env!("CARGO_PKG_VERSION");
-    let remote = tag
-        .trim_start_matches(&format!("{name}-v"))
-        .trim_start_matches('v');
+    let remote = strip_version_tag(tag, name);
     if remote == current {
         println!(
             "{} {} is already up to date ({})",
@@ -683,5 +686,22 @@ mod tests {
         let (ver, sha) = extract_ver_sha("2.3.6-canary.abc1234d");
         assert_eq!(ver, "2.3.6");
         assert!(sha.is_none());
+    }
+
+    // ── strip_version_tag ──────────────────────────────────────────
+
+    #[test]
+    fn strip_version_tag_strips_name_prefix() {
+        assert_eq!(strip_version_tag("d-v0.5.0", "d"), "0.5.0");
+    }
+
+    #[test]
+    fn strip_version_tag_strips_bare_v_prefix() {
+        assert_eq!(strip_version_tag("v0.5.0", "d"), "0.5.0");
+    }
+
+    #[test]
+    fn strip_version_tag_bare_version_unchanged() {
+        assert_eq!(strip_version_tag("0.5.0", "d"), "0.5.0");
     }
 }
