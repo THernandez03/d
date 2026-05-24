@@ -35,17 +35,26 @@ pub const fn target() -> &'static str {
 /// Build the download URL for a specific Deno release tag.
 ///
 /// Uses dl.deno.land:
-/// - Release: `https://dl.deno.land/release/{tag}/deno-{target}.zip`
+/// - Release: `https://dl.deno.land/release/v{version}/deno-{target}.zip`
 /// - Canary:  `https://dl.deno.land/canary/{sha}/deno-{target}.zip`
 ///
-/// Cache keys for canary are `"canary-{sha}"`; the SHA is extracted for the URL.
+/// Cache keys for stable are bare versions like `"2.8.0"`.
+/// Cache keys for canary are `"{version}+{sha}"` — the SHA is extracted for the URL.
+/// The legacy `"canary-{sha}"` format is also accepted for backward compatibility.
 #[must_use]
 pub fn download_url(tag: &str) -> String {
     let tgt = target();
-    tag.strip_prefix("canary-").map_or_else(
-        || format!("https://dl.deno.land/release/{tag}/deno-{tgt}.zip"),
-        |sha| format!("https://dl.deno.land/canary/{sha}/deno-{tgt}.zip"),
-    )
+    // New canary format: "{version}+{sha}"
+    if let Some(sha) = tag.split_once('+').map(|(_, s)| s) {
+        return format!("https://dl.deno.land/canary/{sha}/deno-{tgt}.zip");
+    }
+    // Legacy canary format: "canary-{sha}"
+    if let Some(sha) = tag.strip_prefix("canary-") {
+        return format!("https://dl.deno.land/canary/{sha}/deno-{tgt}.zip");
+    }
+    // Stable release: bare version like "2.8.0"; dl.deno.land expects the v prefix.
+    let v_tag = format!("v{}", tag.trim_start_matches('v'));
+    format!("https://dl.deno.land/release/{v_tag}/deno-{tgt}.zip")
 }
 
 #[cfg(test)]
@@ -77,13 +86,13 @@ mod tests {
 
     #[test]
     fn download_url_contains_tag() {
-        let url = download_url("v1.40.0");
+        let url = download_url("1.40.0");
         assert!(url.contains("v1.40.0"), "url: {url}");
     }
 
     #[test]
     fn download_url_starts_with_dl_deno_land() {
-        let url = download_url("v1.40.0");
+        let url = download_url("1.40.0");
         assert!(
             url.starts_with("https://dl.deno.land/release/"),
             "url: {url}"
@@ -92,7 +101,7 @@ mod tests {
 
     #[test]
     fn download_url_ends_with_zip() {
-        let url = download_url("v1.40.0");
+        let url = download_url("1.40.0");
         assert!(
             std::path::Path::new(&url)
                 .extension()
@@ -103,14 +112,14 @@ mod tests {
 
     #[test]
     fn download_url_contains_target() {
-        let url = download_url("v1.40.0");
+        let url = download_url("1.40.0");
         assert!(url.contains(target()), "url: {url}");
     }
 
     #[test]
     fn download_url_canary_with_sha() {
         let sha = "abc123def456";
-        let url = download_url(&format!("canary-{sha}"));
+        let url = download_url(&format!("2.8.0+{sha}"));
         assert!(
             url.starts_with("https://dl.deno.land/canary/"),
             "url: {url}"

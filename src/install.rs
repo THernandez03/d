@@ -8,86 +8,270 @@ use console::style;
 
 use crate::{arch, cache, releases, symlink};
 
-/// Install a Deno version and activate it.
-pub fn install(version_str: &str) -> Result<()> {
-    let tag = releases::resolve_tag(version_str)?;
+/// Returns `true` if the input is a symbolic alias resolved entirely via network.
+fn is_alias(s: &str) -> bool {
+    matches!(
+        s,
+        "lts" | "stable" | "current" | "latest" | "canary" | "nightly" | "next" | "edge" | "beta"
+    )
+}
 
-    if symlink::active_version().as_deref() == Some(&tag) {
+/// Returns `true` if the input looks like a bare version number.
+fn looks_like_version(s: &str) -> bool {
+    s.starts_with(|c: char| c.is_ascii_digit())
+        && s.chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'x' | 'X'))
+}
+
+/// Returns `true` if the input looks like a git commit SHA (7-40 hex chars
+/// with at least one letter `a`-`f`).
+fn is_sha_input(s: &str) -> bool {
+    let n = s.len();
+    (7..=40).contains(&n)
+        && s.chars().all(|c| c.is_ascii_hexdigit())
+        && s.chars().any(|c| matches!(c, 'a'..='f' | 'A'..='F'))
+}
+
+/// Extract the base version (before any `+sha`) and the optional SHA from a
+/// resolved tag. Channel suffixes like `-dev.N` are stripped at the first `-`.
+fn extract_ver_sha(tag: &str) -> (String, Option<&str>) {
+    let (ver_part, sha) = tag
+        .split_once('+')
+        .map_or((tag, None), |(v, s)| (v, Some(s)));
+    let clean_ver = ver_part.split('-').next().unwrap_or(ver_part).to_string();
+    (clean_ver, sha)
+}
+
+/// Query the installed deno binary to determine the canonical cache key.
+///
+/// Stable: `deno 2.3.6 (stable, ...)` → `("2.3.6", None)`\
+/// Canary: `deno 2.3.6+abc1234d (canary, ...)` → `("2.3.6", Some("abc1234d"))` (7 chars)
+fn query_binary_version(binary_path: &Path) -> Result<(String, Option<String>)> {
+    let out = Command::new(binary_path)
+        .arg("--version")
+        .output()
+        .context("Failed to run deno --version")?;
+    let raw = String::from_utf8_lossy(&out.stdout);
+    let first_line = raw.lines().next().unwrap_or("").trim();
+    // Strip "deno " prefix
+    let rest = first_line.strip_prefix("deno ").unwrap_or(first_line);
+    // rest = "2.3.6 (stable...)" or "2.3.6+abc1234d (canary...)"
+    let ver_part = rest.split_whitespace().next().unwrap_or("");
+    if let Some((ver, sha)) = ver_part.split_once('+') {
+        let short_sha = sha[..sha.len().min(7)].to_string();
+        Ok((ver.to_string(), Some(short_sha)))
+    } else {
+        Ok((ver_part.to_string(), None))
+    }
+}
+
+/// Activate an already-cached version (update the symlink).
+fn activate_cached(tag: &str) -> Result<()> {
+    if symlink::active_version().as_deref() == Some(tag) {
         println!(
             "{} Deno {} is already the active version.",
-            style("✓").green().bold(),
-            style(&tag).cyan().bold(),
+            style("\u{2713}").green().bold(),
+            style(tag).cyan().bold(),
         );
         return Ok(());
     }
+    let from = symlink::active_version();
+    match &from {
+        Some(f) => println!(
+            "{} Activating Deno {} \u{2192} {}...",
+            style("\u{25c6}").magenta(),
+            style(f).cyan().bold(),
+            style(tag).cyan().bold(),
+        ),
+        None => println!(
+            "{} Activating Deno {}...",
+            style("\u{25c6}").magenta(),
+            style(tag).cyan().bold(),
+        ),
+    }
+    symlink::activate(tag)?;
+    println!(
+        "{} Installed Deno {} successfully.",
+        style("\u{2713}").green().bold(),
+        style(tag).cyan().bold(),
+    );
+    Ok(())
+}
 
-    if cache::is_cached(&tag) {
-        println!(
-            "{} Deno {} is already cached.",
-            style("◆").dim(),
-            style(&tag).cyan(),
-        );
-    } else {
+/// Install a Deno version and activate it.
+pub fn install(version_str: &str) -> Result<()> {
+    let v = version_str.trim();
+
+    // 1. Pre-resolve cache check — skip network for version/SHA inputs
+    if !is_alias(v) && !v.contains('+') {
+        if is_sha_input(v) {
+            if let Some(cached) = cache::find_by_sha(v) {
+                return activate_cached(&cached);
+            }
+        } else if looks_like_version(v) {
+            let prefix = v.trim_end_matches(".x").trim_end_matches(".X");
+            if let Some(cached) = cache::find_by_version_prefix(prefix) {
+                return activate_cached(&cached);
+            }
+        }
+    }
+
+    // 2. Resolve via network
+    let tag = releases::resolve_tag(v)?;
+
+    // 3. Post-resolve cache check
+    {
+        let (ver_prefix, tag_sha) = extract_ver_sha(&tag);
+        if let Some(cached) = cache::find_by_version_prefix(&ver_prefix) {
+            let sha_ok = match (tag_sha, cache::cache_key_sha(&cached)) {
+                (Some(ts), Some(cs)) => cache::sha_matches(cs, ts),
+                (None, _) => true,
+                (Some(_), None) => false,
+            };
+            if sha_ok {
+                return activate_cached(&cached);
+            }
+        }
+    }
+
+    // 4. Download if not already cached
+    if !cache::is_cached(&tag) {
         println!(
             "{} Downloading Deno {}...",
-            style("⬇").cyan(),
+            style("\u{2b07}").cyan(),
             style(&tag).cyan().bold(),
         );
         let url = arch::download_url(&tag);
         download_version(&url, &tag)?;
     }
 
-    let from = symlink::active_version();
-    match &from {
-        Some(f) => println!(
-            "{} Activating Deno {} \u{2192} {}...",
-            style("◆").magenta(),
-            style(f).cyan().bold(),
-            style(&tag).cyan().bold()
-        ),
-        None => println!(
-            "{} Activating Deno {}...",
-            style("◆").magenta(),
-            style(&tag).cyan().bold()
-        ),
+    // 5. Query the installed binary to get the canonical cache key
+    let binary = cache::deno_binary(&tag);
+    let canonical = match query_binary_version(&binary) {
+        Ok((ver, sha_opt)) => sha_opt.map_or_else(|| ver.clone(), |s| format!("{ver}+{s}")),
+        Err(_) => tag.clone(),
+    };
+    if canonical != tag {
+        cache::rename_version(&tag, &canonical)?;
     }
-    symlink::activate(&tag)?;
-    println!(
-        "{} Installed Deno {} successfully.",
-        style("✓").green().bold(),
-        style(&tag).cyan().bold(),
-    );
-    Ok(())
+
+    activate_cached(&canonical)
 }
 
 /// Download a version into cache without activating it.
 pub fn download_only(version_str: &str) -> Result<()> {
-    let tag = releases::resolve_tag(version_str)?;
+    let v = version_str.trim();
+
+    // Pre-resolve cache check
+    if !is_alias(v) && !v.contains('+') {
+        if is_sha_input(v) {
+            if let Some(cached) = cache::find_by_sha(v) {
+                println!("Version {cached} is already cached.");
+                return Ok(());
+            }
+        } else if looks_like_version(v) {
+            let prefix = v.trim_end_matches(".x").trim_end_matches(".X");
+            if let Some(cached) = cache::find_by_version_prefix(prefix) {
+                println!("Version {cached} is already cached.");
+                return Ok(());
+            }
+        }
+    }
+
+    let tag = releases::resolve_tag(v)?;
+
+    // Post-resolve cache check
+    {
+        let (ver_prefix, tag_sha) = extract_ver_sha(&tag);
+        if let Some(cached) = cache::find_by_version_prefix(&ver_prefix) {
+            let sha_ok = match (tag_sha, cache::cache_key_sha(&cached)) {
+                (Some(ts), Some(cs)) => cache::sha_matches(cs, ts),
+                (None, _) => true,
+                (Some(_), None) => false,
+            };
+            if sha_ok {
+                println!("Version {cached} is already cached.");
+                return Ok(());
+            }
+        }
+    }
+
     if cache::is_cached(&tag) {
         println!("Version {tag} is already cached.");
         return Ok(());
     }
     println!("Downloading Deno {tag}...");
     let url = arch::download_url(&tag);
-    download_version(&url, &tag)
+    download_version(&url, &tag)?;
+    let binary = cache::deno_binary(&tag);
+    if let Ok((ver, sha_opt)) = query_binary_version(&binary) {
+        let canonical = sha_opt.map_or_else(|| ver.clone(), |s| format!("{ver}+{s}"));
+        if canonical != tag {
+            cache::rename_version(&tag, &canonical)?;
+        }
+    }
+    Ok(())
 }
 
 /// Run a cached Deno version with given arguments.
 pub fn run(version_str: &str, args: &[String]) -> Result<()> {
-    let tag = releases::resolve_tag(version_str)?;
+    let v = version_str.trim();
 
-    if !cache::is_cached(&tag) {
-        println!("Version {tag} is not cached. Downloading...");
-        let url = arch::download_url(&tag);
-        download_version(&url, &tag)?;
+    // Pre-resolve cache check
+    if !is_alias(v) && !v.contains('+') {
+        if is_sha_input(v) {
+            if let Some(cached) = cache::find_by_sha(v) {
+                return run_cached(&cached, args);
+            }
+        } else if looks_like_version(v) {
+            let prefix = v.trim_end_matches(".x").trim_end_matches(".X");
+            if let Some(cached) = cache::find_by_version_prefix(prefix) {
+                return run_cached(&cached, args);
+            }
+        }
     }
 
-    let binary = cache::deno_binary(&tag);
+    let tag = releases::resolve_tag(v)?;
+
+    // Post-resolve cache check
+    let resolved_tag = {
+        let (ver_prefix, tag_sha) = extract_ver_sha(&tag);
+        if let Some(cached) = cache::find_by_version_prefix(&ver_prefix) {
+            let sha_ok = match (tag_sha, cache::cache_key_sha(&cached)) {
+                (Some(ts), Some(cs)) => cache::sha_matches(cs, ts),
+                (None, _) => true,
+                (Some(_), None) => false,
+            };
+            if sha_ok {
+                return run_cached(&cached, args);
+            }
+        }
+        tag
+    };
+
+    if !cache::is_cached(&resolved_tag) {
+        println!("Version {resolved_tag} is not cached. Downloading...");
+        let url = arch::download_url(&resolved_tag);
+        download_version(&url, &resolved_tag)?;
+    }
+
+    let binary = cache::deno_binary(&resolved_tag);
+    let canonical = match query_binary_version(&binary) {
+        Ok((ver, sha_opt)) => sha_opt.map_or_else(|| ver.clone(), |s| format!("{ver}+{s}")),
+        Err(_) => resolved_tag.clone(),
+    };
+    if canonical != resolved_tag {
+        cache::rename_version(&resolved_tag, &canonical)?;
+    }
+    run_cached(&canonical, args)
+}
+
+fn run_cached(tag: &str, args: &[String]) -> Result<()> {
+    let binary = cache::deno_binary(tag);
     let status = Command::new(&binary)
         .args(args)
         .status()
         .with_context(|| format!("Failed to run deno {tag}"))?;
-
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
     }
@@ -166,7 +350,19 @@ fn extract_zip(archive: &Path, dest: &Path) -> Result<()> {
 /// Remove a cached version, or prompt for interactive selection if no version is given.
 pub fn remove_version(version: Option<String>) -> Result<()> {
     if let Some(v) = version {
-        cache::remove(&v)?;
+        if cache::is_cached(&v) {
+            cache::remove(&v)?;
+        } else if is_sha_input(&v) {
+            if let Some(matched) = cache::find_by_sha(&v) {
+                cache::remove(&matched)?;
+            } else {
+                println!("Version '{v}' is not cached.");
+            }
+        } else if let Some(matched) = cache::find_by_version_prefix(&v) {
+            cache::remove(&matched)?;
+        } else {
+            println!("Version '{v}' is not cached.");
+        }
         return Ok(());
     }
     let versions = cache::cached_versions()?;
@@ -295,17 +491,19 @@ pub fn update_self() -> Result<()> {
 }
 
 /// Uninstall this version manager completely (removes cache, prefix directory, and the binary).
-pub fn uninstall_self() -> Result<()> {
+pub fn uninstall_self(yes: bool) -> Result<()> {
     let name = env!("CARGO_PKG_NAME");
-    let confirmed = dialoguer::Confirm::new()
-        .with_prompt(format!(
-            "This will remove all cached versions and the {name} binary. Continue?"
-        ))
-        .default(false)
-        .interact()?;
-    if !confirmed {
-        println!("{}", style("Aborted.").yellow());
-        return Ok(());
+    if !yes {
+        let confirmed = dialoguer::Confirm::new()
+            .with_prompt(format!(
+                "This will remove all cached versions and the {name} binary. Continue?"
+            ))
+            .default(false)
+            .interact()?;
+        if !confirmed {
+            println!("{}", style("Aborted.").yellow());
+            return Ok(());
+        }
     }
     println!("Uninstalling {}...", style(name).cyan().bold());
     let prefix = symlink::prefix();
@@ -387,5 +585,101 @@ mod tests {
                 "should skip download when cached: {result:?}"
             );
         });
+    }
+
+    // ── is_alias ───────────────────────────────────────────────────
+
+    #[test]
+    fn is_alias_known_aliases() {
+        assert!(is_alias("lts"));
+        assert!(is_alias("stable"));
+        assert!(is_alias("current"));
+        assert!(is_alias("latest"));
+        assert!(is_alias("canary"));
+        assert!(is_alias("nightly"));
+        assert!(is_alias("next"));
+        assert!(is_alias("edge"));
+        assert!(is_alias("beta"));
+    }
+
+    #[test]
+    fn is_alias_version_not_alias() {
+        assert!(!is_alias("2.3.6"));
+        assert!(!is_alias("abc1234d"));
+        assert!(!is_alias(""));
+    }
+
+    // ── looks_like_version ──────────────────────────────────────────
+
+    #[test]
+    fn looks_like_version_semver() {
+        assert!(looks_like_version("2.3.6"));
+        assert!(looks_like_version("1.40.0"));
+    }
+
+    #[test]
+    fn looks_like_version_x_notation() {
+        assert!(looks_like_version("2.x"));
+        assert!(looks_like_version("2.3.X"));
+    }
+
+    #[test]
+    fn looks_like_version_non_versions() {
+        assert!(!looks_like_version("canary"));
+        assert!(!looks_like_version("v1.2.3"));
+        assert!(!looks_like_version("abc1234d"));
+    }
+
+    // ── is_sha_input ───────────────────────────────────────────────
+
+    #[test]
+    fn is_sha_input_valid() {
+        assert!(is_sha_input("abc1234d"));
+        assert!(is_sha_input("abc1234def5678"));
+    }
+
+    #[test]
+    fn is_sha_input_too_short() {
+        assert!(!is_sha_input("abc123"));
+    }
+
+    #[test]
+    fn is_sha_input_all_digits_rejected() {
+        assert!(!is_sha_input("12345678"));
+    }
+
+    #[test]
+    fn is_sha_input_non_hex_rejected() {
+        assert!(!is_sha_input("abc1234g"));
+    }
+
+    // ── extract_ver_sha ─────────────────────────────────────────────
+
+    #[test]
+    fn extract_ver_sha_with_sha() {
+        let (ver, sha) = extract_ver_sha("2.3.6+abc1234def");
+        assert_eq!(ver, "2.3.6");
+        assert_eq!(sha, Some("abc1234def"));
+    }
+
+    #[test]
+    fn extract_ver_sha_without_sha() {
+        let (ver, sha) = extract_ver_sha("2.3.6");
+        assert_eq!(ver, "2.3.6");
+        assert!(sha.is_none());
+    }
+
+    #[test]
+    fn extract_ver_sha_strips_channel_suffix() {
+        let (ver, sha) = extract_ver_sha("2.3.6-canary.abc1234d+abc1234de");
+        assert_eq!(ver, "2.3.6");
+        assert_eq!(sha, Some("abc1234de"));
+    }
+
+    #[test]
+    fn extract_ver_sha_channel_no_sha() {
+        let (ver, sha) = extract_ver_sha("2.3.6-canary.abc1234d");
+        assert_eq!(ver, "2.3.6");
+        assert!(sha.is_none());
     }
 }
