@@ -94,7 +94,8 @@ enum Commands {
     Info,
     /// Update d to the latest available version
     Update,
-    /// Uninstall d completely (removes cached versions, prefix, and the d binary)
+    /// Uninstall d completely (removes cached versions, prefix, and the d binary).
+    /// Use `--yes`/`-y` to skip the confirmation prompt.
     Uninstall {
         /// Skip the confirmation prompt.
         #[arg(short, long)]

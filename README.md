@@ -101,6 +101,9 @@ d rm v1.40.0        # alias
 # Remove all except active
 d prune
 
+# Also remove the active version
+d prune --force
+
 # Show info
 d info
 
@@ -109,6 +112,7 @@ d update
 
 # Fully remove d + all cached versions (requires confirmation)
 d uninstall
+d uninstall --yes   # skip confirmation prompt
 ```
 
 ## Version Aliases
