@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/THernandez03/d/compare/d-v0.5.0...d-v0.5.1) (2026-05-24)
+
+
+### Bug Fixes
+
+* 🐛 Strip name prefix from self-update version tag ([5306d67](https://github.com/THernandez03/d/commit/5306d677a90955a27015e2a7709316ccf1a57ae0))
+
 ## [0.5.0](https://github.com/THernandez03/d/compare/d-v0.4.0...d-v0.5.0) (2026-05-24)
 
 
